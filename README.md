@@ -59,16 +59,18 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  A[Create session (Category · Strategy · Model Type)]
+  A[PromptTrace Workflow]
+  B[Create session:\nCategory\nStrategy\nModel Type]
   G[Generate adversarial test prompt]
   T[Execute prompt in external target system]
-  P[Paste response (and optional artifacts)]
+  P[Paste response and optional artifacts]
   N[Analyze: LLM-based evaluation + deterministic heuristics]
   C{Continue iterative testing?}
   L[Lock follow-up and start next turn]
-  X[Export Report: JSON, CSV, or Markdown]
+  X[Export Report:\nJSON/CSV/Markdown]
 
-  A --> G
+  A --> 
+  B --> G
   G --> T
   T --> P
   P --> N
