@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { apiJson, type SessionListItem } from "../api.js";
 
 function verdictLabel(v: string | null) {
-  if (!v) return "—";
+  if (!v) return "-";
   if (v === "SAFE") return "Safe";
   if (v === "BORDERLINE") return "Borderline";
   if (v === "FAILED") return "Failed";
@@ -75,7 +75,7 @@ export function Dashboard() {
         <div>
           <h1>Sessions</h1>
           <p className="muted">
-            Black-box adversarial test sessions — traceable turns and
+            Black-box adversarial test sessions - traceable turns and
             structured evaluation.
           </p>
         </div>

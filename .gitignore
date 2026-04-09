@@ -60,7 +60,7 @@ mlruns/
 *.pth
 *.bin
 
-# LLM adapter / system prompts — keep local; do not push to GitHub
+# LLM adapter / system prompts - keep local; do not push to GitHub
 server/src/services/llm.ts
 
 # Common fine-tuning / eval corpora (adjust if you add checked-in fixtures)

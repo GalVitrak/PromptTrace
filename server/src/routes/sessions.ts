@@ -18,7 +18,10 @@ import {
   type TurnImageLookup,
   withImageAsset,
 } from "../types/testTurnRow.js";
-import { adjustConfidence, runHeuristics } from "../services/heuristics.js";
+import {
+  adjustConfidence,
+  runHeuristics,
+} from "../services/heuristics.js";
 import {
   analyzePastedResponse,
   generateAdversarialPrompt,
@@ -39,7 +42,8 @@ import {
 
 const router: Router = createRouter();
 
-const GENERATED_REPORTS_DIR = "docs/generated_reports";
+const GENERATED_REPORTS_DIR =
+  "docs/generated_reports";
 
 async function resolveImageDataUrlForAnalysis(
   repoRoot: string,
@@ -50,19 +54,33 @@ async function resolveImageDataUrlForAnalysis(
     if (bodyImage === null) return null;
     return bodyImage.trim();
   }
-  const url = turn.pastedModelImageDataUrl?.trim();
+  const url =
+    turn.pastedModelImageDataUrl?.trim();
   if (url) return url;
-  const asset = turn.pastedModelImageAssetPath?.trim();
+  const asset =
+    turn.pastedModelImageAssetPath?.trim();
   if (!asset) return null;
-  return (await loadImageDataUrlFromAsset(repoRoot, asset)) ?? null;
+  return (
+    (await loadImageDataUrlFromAsset(
+      repoRoot,
+      asset,
+    )) ?? null
+  );
 }
 
 /** Mutations are blocked until the client reopens the session (status ACTIVE). */
 const SESSION_CONCLUDED_MSG =
   "This session is concluded. Reopen it on the workbench to continue.";
 
-function err(res: Response, status: number, message: string, details?: unknown) {
-  return res.status(status).json({ error: message, details });
+function err(
+  res: Response,
+  status: number,
+  message: string,
+  details?: unknown,
+) {
+  return res
+    .status(status)
+    .json({ error: message, details });
 }
 
 type TurnAgg = {
@@ -81,16 +99,28 @@ function summarizeSessionForList(
   turns: TurnAgg[],
   sessionStatus: string,
 ) {
-  const analyzed = turns.filter((t) => t.evaluationVerdict != null);
+  const analyzed = turns.filter(
+    (t) => t.evaluationVerdict != null,
+  );
   const scores = analyzed
     .map((t) => t.evaluationScore)
-    .filter((n): n is number => typeof n === "number");
-  let aggregateVerdict: "SAFE" | "BORDERLINE" | "FAILED" | null = null;
+    .filter(
+      (n): n is number => typeof n === "number",
+    );
+  let aggregateVerdict:
+    | "SAFE"
+    | "BORDERLINE"
+    | "FAILED"
+    | null = null;
   for (const t of analyzed) {
-    const v = t.evaluationVerdict as "SAFE" | "BORDERLINE" | "FAILED";
+    const v = t.evaluationVerdict as
+      | "SAFE"
+      | "BORDERLINE"
+      | "FAILED";
     if (
       aggregateVerdict == null ||
-      verdictRank(v) > verdictRank(aggregateVerdict)
+      verdictRank(v) >
+        verdictRank(aggregateVerdict)
     ) {
       aggregateVerdict = v;
     }
@@ -98,14 +128,19 @@ function summarizeSessionForList(
   let sessionScore: number | null = null;
   if (scores.length > 0) {
     const avg = Math.round(
-      scores.reduce((a, b) => a + b, 0) / scores.length,
+      scores.reduce((a, b) => a + b, 0) /
+        scores.length,
     );
-    sessionScore = Math.min(100, Math.max(1, avg));
+    sessionScore = Math.min(
+      100,
+      Math.max(1, avg),
+    );
   }
   const hadModelFailure = analyzed.some(
     (t) => t.evaluationVerdict === "FAILED",
   );
-  const isConcluded = sessionStatus === "ARCHIVED";
+  const isConcluded =
+    sessionStatus === "ARCHIVED";
   const redTeamSuccess =
     isConcluded && hadModelFailure
       ? true
@@ -115,7 +150,9 @@ function summarizeSessionForList(
   const latestTurnNumber =
     turns.length === 0
       ? null
-      : Math.max(...turns.map((t) => t.turnNumber));
+      : Math.max(
+          ...turns.map((t) => t.turnNumber),
+        );
 
   return {
     aggregateVerdict,
@@ -129,32 +166,39 @@ function summarizeSessionForList(
   };
 }
 
-function formatSessionTitle(category: string, custom?: string | null) {
+function formatSessionTitle(
+  category: string,
+  custom?: string | null,
+) {
   if (custom?.trim()) return custom.trim();
   const d = new Date();
   const date = d.toISOString().slice(0, 10);
-  return `Untitled — ${category} — ${date}`;
+  return `Untitled - ${category} - ${date}`;
 }
 
 router.get(
   "/",
   asyncHandler(async (_req, res) => {
-    const sessions = await prisma.testSession.findMany({
-      orderBy: { updatedAt: "desc" },
-      include: {
-        turns: {
-          orderBy: { turnNumber: "asc" },
-          select: {
-            turnNumber: true,
-            evaluationVerdict: true,
-            evaluationScore: true,
+    const sessions =
+      await prisma.testSession.findMany({
+        orderBy: { updatedAt: "desc" },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+            select: {
+              turnNumber: true,
+              evaluationVerdict: true,
+              evaluationScore: true,
+            },
           },
         },
-      },
-    });
+      });
     const list = sessions.map((s) => {
       const { turns, ...rest } = s;
-      const summary = summarizeSessionForList(turns, s.status);
+      const summary = summarizeSessionForList(
+        turns,
+        s.status,
+      );
       return {
         ...rest,
         ...summary,
@@ -167,15 +211,28 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const parsed = BootstrapSessionBodySchema.safeParse(req.body);
+    const parsed =
+      BootstrapSessionBodySchema.safeParse(
+        req.body,
+      );
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
     const b = parsed.data;
-    const title = formatSessionTitle(b.category, b.title);
+    const title = formatSessionTitle(
+      b.category,
+      b.title,
+    );
     const aggressive = b.aggressive === true;
 
-    let gen: Awaited<ReturnType<typeof generateAdversarialPrompt>>;
+    let gen: Awaited<
+      ReturnType<typeof generateAdversarialPrompt>
+    >;
     try {
       gen = await generateAdversarialPrompt({
         modelType: b.modelType,
@@ -195,29 +252,36 @@ router.post(
       );
     }
 
-    const session = await prisma.testSession.create({
-      data: {
-        title,
-        modelType: b.modelType,
-        modelNameOrNotes: b.modelNameOrNotes ?? null,
-        category: b.category,
-        strategy: b.strategy,
-        objective: b.objective ?? null,
-        turns: {
-          create: {
-            turnNumber: 1,
-            generatedPrompt: gen.generatedPrompt,
-            generatedMeta: {
-              objective: gen.objective,
-              pressurePoint: gen.pressurePoint,
-              notes: gen.notes ?? null,
-              aggressiveFraming: aggressive,
+    const session =
+      await prisma.testSession.create({
+        data: {
+          title,
+          modelType: b.modelType,
+          modelNameOrNotes:
+            b.modelNameOrNotes ?? null,
+          category: b.category,
+          strategy: b.strategy,
+          objective: b.objective ?? null,
+          turns: {
+            create: {
+              turnNumber: 1,
+              generatedPrompt:
+                gen.generatedPrompt,
+              generatedMeta: {
+                objective: gen.objective,
+                pressurePoint: gen.pressurePoint,
+                notes: gen.notes ?? null,
+                aggressiveFraming: aggressive,
+              },
             },
           },
         },
-      },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
 
     return res.status(201).json(session);
   }),
@@ -226,14 +290,21 @@ router.post(
 router.get(
   "/:id/turns/:turnId/image",
   asyncHandler(async (req, res) => {
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!session) return err(res, 404, "Session not found");
-    const turnRaw = await prisma.testTurn.findFirst({
-      where: { id: req.params.turnId, sessionId: session.id },
-    });
-    if (!turnRaw) return err(res, 404, "Turn not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
+    const turnRaw =
+      await prisma.testTurn.findFirst({
+        where: {
+          id: req.params.turnId,
+          sessionId: session.id,
+        },
+      });
+    if (!turnRaw)
+      return err(res, 404, "Turn not found");
     const turn = withImageAsset(turnRaw);
     if (!turn.pastedModelImageAssetPath?.trim())
       return err(res, 404, "Image not found");
@@ -241,13 +312,17 @@ router.get(
       getRepoRoot(),
       turn.pastedModelImageAssetPath.trim(),
     );
-    if (!abs) return err(res, 404, "Image not found");
+    if (!abs)
+      return err(res, 404, "Image not found");
     const buf = await fs.readFile(abs);
     res.setHeader(
       "Content-Type",
       contentTypeForAssetFilename(abs),
     );
-    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader(
+      "Cache-Control",
+      "private, max-age=3600",
+    );
     res.send(buf);
   }),
 );
@@ -255,11 +330,17 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
     res.json(session);
   }),
 );
@@ -267,29 +348,49 @@ router.get(
 router.patch(
   "/:id",
   asyncHandler(async (req, res) => {
-    const parsed = UpdateSessionContextBodySchema.safeParse(req.body);
+    const parsed =
+      UpdateSessionContextBodySchema.safeParse(
+        req.body,
+      );
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
-    const exists = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!exists) return err(res, 404, "Session not found");
+    const exists =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!exists)
+      return err(res, 404, "Session not found");
 
     const b = parsed.data;
-    if (exists.status === "ARCHIVED" && b.status !== "ACTIVE")
+    if (
+      exists.status === "ARCHIVED" &&
+      b.status !== "ACTIVE"
+    )
       return err(res, 400, SESSION_CONCLUDED_MSG);
 
-    const session = await prisma.testSession.update({
-      where: { id: req.params.id },
-      data: {
-        category: b.category,
-        strategy: b.strategy,
-        objective: b.objective,
-        ...(b.status !== undefined ? { status: b.status } : {}),
-      },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
+    const session =
+      await prisma.testSession.update({
+        where: { id: req.params.id },
+        data: {
+          category: b.category,
+          strategy: b.strategy,
+          objective: b.objective,
+          ...(b.status !== undefined
+            ? { status: b.status }
+            : {}),
+        },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
 
     res.json(session);
   }),
@@ -298,26 +399,40 @@ router.patch(
 router.patch(
   "/:id/turns/:turnId",
   asyncHandler(async (req, res) => {
-    const parsed = UpdateTurnRecommendedPromptBodySchema.safeParse(req.body);
+    const parsed =
+      UpdateTurnRecommendedPromptBodySchema.safeParse(
+        req.body,
+      );
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
     if (session.status === "ARCHIVED")
       return err(res, 400, SESSION_CONCLUDED_MSG);
 
     const turn = await prisma.testTurn.findFirst({
-      where: { id: req.params.turnId, sessionId: session.id },
+      where: {
+        id: req.params.turnId,
+        sessionId: session.id,
+      },
     });
-    if (!turn) return err(res, 404, "Turn not found");
+    if (!turn)
+      return err(res, 404, "Turn not found");
     if (turn.nextPromptLockedAt != null)
       return err(
         res,
         400,
-        "This turn is locked — open the latest turn to continue the session",
+        "This turn is locked - open the latest turn to continue the session",
       );
     if (turn.evaluationVerdict == null)
       return err(
@@ -326,13 +441,19 @@ router.patch(
         "Analyze this turn before editing the recommended follow-up prompt",
       );
 
-    const text = parsed.data.recommendedNextPrompt.trim();
+    const text =
+      parsed.data.recommendedNextPrompt.trim();
     const prevRaw = turn.heuristicFlags;
     const prevFlags =
       prevRaw != null &&
       typeof prevRaw === "object" &&
       !Array.isArray(prevRaw)
-        ? { ...(prevRaw as Record<string, unknown>) }
+        ? {
+            ...(prevRaw as Record<
+              string,
+              unknown
+            >),
+          }
         : {};
 
     await prisma.testTurn.update({
@@ -351,10 +472,15 @@ router.patch(
       data: { updatedAt: new Date() },
     });
 
-    const full = await prisma.testSession.findUnique({
-      where: { id: session.id },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
+    const full =
+      await prisma.testSession.findUnique({
+        where: { id: session.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
     res.json(full);
   }),
 );
@@ -362,39 +488,67 @@ router.patch(
 router.post(
   "/:id/turns/:turnId/resuggest-next",
   asyncHandler(async (req, res) => {
-    const parsed = ResuggestNextBodySchema.safeParse(req.body);
+    const parsed =
+      ResuggestNextBodySchema.safeParse(req.body);
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
     if (session.status === "ARCHIVED")
       return err(res, 400, SESSION_CONCLUDED_MSG);
 
-    const turnRaw = await prisma.testTurn.findFirst({
-      where: { id: req.params.turnId, sessionId: session.id },
-    });
-    if (!turnRaw) return err(res, 404, "Turn not found");
+    const turnRaw =
+      await prisma.testTurn.findFirst({
+        where: {
+          id: req.params.turnId,
+          sessionId: session.id,
+        },
+      });
+    if (!turnRaw)
+      return err(res, 404, "Turn not found");
     const turn = withImageAsset(turnRaw);
     if (turn.nextPromptLockedAt != null)
       return err(
         res,
         400,
-        "This turn is locked — use the latest turn to continue",
+        "This turn is locked - use the latest turn to continue",
       );
     if (turn.evaluationVerdict == null)
-      return err(res, 400, "Analyze this turn before re-suggesting a follow-up");
-    const pasted = turn.pastedModelResponse?.trim();
+      return err(
+        res,
+        400,
+        "Analyze this turn before re-suggesting a follow-up",
+      );
+    const pasted =
+      turn.pastedModelResponse?.trim();
     if (!pasted)
-      return err(res, 400, "No pasted response on this turn to re-suggest from");
+      return err(
+        res,
+        400,
+        "No pasted response on this turn to re-suggest from",
+      );
 
-    const aggressive = parsed.data.aggressive === true;
+    const aggressive =
+      parsed.data.aggressive === true;
     const nextPromptInstruction =
-      parsed.data.nextPromptInstruction?.trim() || null;
+      parsed.data.nextPromptInstruction?.trim() ||
+      null;
 
-    let out: Awaited<ReturnType<typeof resuggestRecommendedNextPrompt>>;
+    let out: Awaited<
+      ReturnType<
+        typeof resuggestRecommendedNextPrompt
+      >
+    >;
     try {
       out = await resuggestRecommendedNextPrompt({
         category: session.category,
@@ -405,20 +559,26 @@ router.post(
         aggressive,
         nextPromptInstruction,
         priorVerdict: turn.evaluationVerdict,
-        evaluationSummary: turn.evaluationSummary ?? "",
-        priorRecommendedNextPrompt: turn.recommendedNextPrompt,
+        evaluationSummary:
+          turn.evaluationSummary ?? "",
+        priorRecommendedNextPrompt:
+          turn.recommendedNextPrompt,
         hasImageOutput:
-          (typeof turn.pastedModelImageDataUrl === "string" &&
-            turn.pastedModelImageDataUrl.length > 0) ||
-          (typeof turn.pastedModelImageAssetPath === "string" &&
-            turn.pastedModelImageAssetPath.trim().length > 0),
+          (typeof turn.pastedModelImageDataUrl ===
+            "string" &&
+            turn.pastedModelImageDataUrl.length >
+              0) ||
+          (typeof turn.pastedModelImageAssetPath ===
+            "string" &&
+            turn.pastedModelImageAssetPath.trim()
+              .length > 0),
       });
     } catch (e) {
       console.error(e);
       return err(
         res,
         502,
-        "Re-suggest failed — try again or use demo mode without API key",
+        "Re-suggest failed - try again or use demo mode without API key",
         e instanceof Error ? e.message : e,
       );
     }
@@ -428,17 +588,24 @@ router.post(
       prevRaw != null &&
       typeof prevRaw === "object" &&
       !Array.isArray(prevRaw)
-        ? { ...(prevRaw as Record<string, unknown>) }
+        ? {
+            ...(prevRaw as Record<
+              string,
+              unknown
+            >),
+          }
         : {};
 
     await prisma.testTurn.update({
       where: { id: turn.id },
       data: {
-        recommendedNextPrompt: out.recommendedNextPrompt,
+        recommendedNextPrompt:
+          out.recommendedNextPrompt,
         heuristicFlags: {
           ...prevFlags,
           aggressiveFollowUpRequested: aggressive,
-          assistantRecommendedNextPrompt: out.recommendedNextPrompt,
+          assistantRecommendedNextPrompt:
+            out.recommendedNextPrompt,
           analystEditedRecommendedNextPrompt: false,
           ...(nextPromptInstruction
             ? { nextPromptInstruction }
@@ -452,10 +619,15 @@ router.post(
       data: { updatedAt: new Date() },
     });
 
-    const full = await prisma.testSession.findUnique({
-      where: { id: session.id },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
+    const full =
+      await prisma.testSession.findUnique({
+        where: { id: session.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
     res.json(full);
   }),
 );
@@ -463,27 +635,42 @@ router.post(
 router.post(
   "/:id/turns/:turnId/lock-and-advance",
   asyncHandler(async (req, res) => {
-    const parsed = LockAndAdvanceBodySchema.safeParse(req.body);
+    const parsed =
+      LockAndAdvanceBodySchema.safeParse(
+        req.body,
+      );
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
     if (session.status === "ARCHIVED")
       return err(res, 400, SESSION_CONCLUDED_MSG);
 
     const turn = await prisma.testTurn.findFirst({
-      where: { id: req.params.turnId, sessionId: session.id },
+      where: {
+        id: req.params.turnId,
+        sessionId: session.id,
+      },
     });
-    if (!turn) return err(res, 404, "Turn not found");
+    if (!turn)
+      return err(res, 404, "Turn not found");
 
-    const latest = await prisma.testTurn.findFirst({
-      where: { sessionId: session.id },
-      orderBy: { turnNumber: "desc" },
-      select: { id: true, turnNumber: true },
-    });
+    const latest =
+      await prisma.testTurn.findFirst({
+        where: { sessionId: session.id },
+        orderBy: { turnNumber: "desc" },
+        select: { id: true, turnNumber: true },
+      });
     if (!latest || latest.id !== turn.id)
       return err(
         res,
@@ -492,26 +679,42 @@ router.post(
       );
 
     if (turn.evaluationVerdict == null)
-      return err(res, 400, "Analyze this turn before locking and continuing");
+      return err(
+        res,
+        400,
+        "Analyze this turn before locking and continuing",
+      );
     if (turn.nextPromptLockedAt != null)
-      return err(res, 400, "This turn is already locked");
+      return err(
+        res,
+        400,
+        "This turn is already locked",
+      );
 
-    const text = parsed.data.recommendedNextPrompt.trim();
+    const text =
+      parsed.data.recommendedNextPrompt.trim();
     const prevRaw = turn.heuristicFlags;
     const prevFlags =
       prevRaw != null &&
       typeof prevRaw === "object" &&
       !Array.isArray(prevRaw)
-        ? { ...(prevRaw as Record<string, unknown>) }
+        ? {
+            ...(prevRaw as Record<
+              string,
+              unknown
+            >),
+          }
         : {};
 
     const lockedAt = new Date();
     const assistantSnap =
-      typeof prevFlags.assistantRecommendedNextPrompt === "string"
+      typeof prevFlags.assistantRecommendedNextPrompt ===
+      "string"
         ? prevFlags.assistantRecommendedNextPrompt.trim()
         : "";
     const editBaseline =
-      assistantSnap || (turn.recommendedNextPrompt ?? "").trim();
+      assistantSnap ||
+      (turn.recommendedNextPrompt ?? "").trim();
 
     await prisma.$transaction([
       prisma.testTurn.update({
@@ -521,7 +724,8 @@ router.post(
           nextPromptLockedAt: lockedAt,
           heuristicFlags: {
             ...prevFlags,
-            analystEditedRecommendedNextPrompt: text !== editBaseline,
+            analystEditedRecommendedNextPrompt:
+              text !== editBaseline,
           } as Prisma.InputJsonValue,
         },
       }),
@@ -533,7 +737,8 @@ router.post(
           generatedMeta: {
             seededFromTurnId: turn.id,
             seededFromTurnNumber: turn.turnNumber,
-            lockedPreviousTurnAt: lockedAt.toISOString(),
+            lockedPreviousTurnAt:
+              lockedAt.toISOString(),
           },
         },
       }),
@@ -543,10 +748,15 @@ router.post(
       }),
     ]);
 
-    const full = await prisma.testSession.findUnique({
-      where: { id: session.id },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
+    const full =
+      await prisma.testSession.findUnique({
+        where: { id: session.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
     res.status(201).json(full);
   }),
 );
@@ -554,56 +764,79 @@ router.post(
 router.post(
   "/:id/turns/:turnId/analyze",
   asyncHandler(async (req, res) => {
-    const parsed = AnalyzeTurnBodySchema.safeParse(req.body);
+    const parsed =
+      AnalyzeTurnBodySchema.safeParse(req.body);
     if (!parsed.success)
-      return err(res, 400, "Invalid body", parsed.error.flatten());
+      return err(
+        res,
+        400,
+        "Invalid body",
+        parsed.error.flatten(),
+      );
 
-    const session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
     if (session.status === "ARCHIVED")
       return err(res, 400, SESSION_CONCLUDED_MSG);
 
-    const turnRaw = await prisma.testTurn.findFirst({
-      where: { id: req.params.turnId, sessionId: session.id },
-    });
-    if (!turnRaw) return err(res, 404, "Turn not found");
+    const turnRaw =
+      await prisma.testTurn.findFirst({
+        where: {
+          id: req.params.turnId,
+          sessionId: session.id,
+        },
+      });
+    if (!turnRaw)
+      return err(res, 404, "Turn not found");
     const turn = withImageAsset(turnRaw);
     if (turn.nextPromptLockedAt != null)
       return err(
         res,
         400,
-        "This turn is locked — analyze only the latest turn",
+        "This turn is locked - analyze only the latest turn",
       );
 
     const repoRoot = getRepoRoot();
-    const resolvedImageDataUrl = await resolveImageDataUrlForAnalysis(
-      repoRoot,
-      turn,
-      parsed.data.pastedImageDataUrl,
-    );
+    const resolvedImageDataUrl =
+      await resolveImageDataUrlForAnalysis(
+        repoRoot,
+        turn,
+        parsed.data.pastedImageDataUrl,
+      );
     const hasImageAttached =
       typeof resolvedImageDataUrl === "string" &&
       resolvedImageDataUrl.length > 0;
 
-    const flags = runHeuristics(parsed.data.pastedResponse, {
-      hasImage: hasImageAttached,
-    });
-    const aggressiveFollowUp = parsed.data.aggressive === true;
+    const flags = runHeuristics(
+      parsed.data.pastedResponse,
+      {
+        hasImage: hasImageAttached,
+      },
+    );
+    const aggressiveFollowUp =
+      parsed.data.aggressive === true;
     const nextPromptInstruction =
-      parsed.data.nextPromptInstruction?.trim() || null;
-    let analysis: Awaited<ReturnType<typeof analyzePastedResponse>>;
+      parsed.data.nextPromptInstruction?.trim() ||
+      null;
+    let analysis: Awaited<
+      ReturnType<typeof analyzePastedResponse>
+    >;
     try {
       analysis = await analyzePastedResponse({
         category: session.category,
         strategy: session.strategy,
         generatedPrompt: turn.generatedPrompt,
-        pastedResponse: parsed.data.pastedResponse.trim(),
+        pastedResponse:
+          parsed.data.pastedResponse.trim(),
         objective: session.objective,
         aggressive: aggressiveFollowUp,
         nextPromptInstruction,
-        pastedImageDataUrl: resolvedImageDataUrl ?? undefined,
+        pastedImageDataUrl:
+          resolvedImageDataUrl ?? undefined,
         modelType: session.modelType,
       });
     } catch (e) {
@@ -611,47 +844,64 @@ router.post(
       return err(
         res,
         502,
-        "Analysis failed — try again or use demo mode without API key",
+        "Analysis failed - try again or use demo mode without API key",
         e instanceof Error ? e.message : e,
       );
     }
 
-    const confidence = adjustConfidence(analysis.confidence, flags);
+    const confidence = adjustConfidence(
+      analysis.confidence,
+      flags,
+    );
 
     let imagePersist:
       | {
           pastedModelImageDataUrl: string | null;
-          pastedModelImageAssetPath: string | null;
+          pastedModelImageAssetPath:
+            | string
+            | null;
         }
       | undefined;
-    if (parsed.data.pastedImageDataUrl !== undefined) {
+    if (
+      parsed.data.pastedImageDataUrl !== undefined
+    ) {
       const v = parsed.data.pastedImageDataUrl;
       if (v === null) {
-        await removeTurnImageAsset(repoRoot, turn.pastedModelImageAssetPath);
+        await removeTurnImageAsset(
+          repoRoot,
+          turn.pastedModelImageAssetPath,
+        );
         imagePersist = {
           pastedModelImageDataUrl: null,
           pastedModelImageAssetPath: null,
         };
       } else if (/^data:image\//i.test(v)) {
-        await removeTurnImageAsset(repoRoot, turn.pastedModelImageAssetPath);
-        const rel = await saveTurnImageFromDataUrl(
+        await removeTurnImageAsset(
           repoRoot,
-          session.id,
-          turn.id,
-          v,
+          turn.pastedModelImageAssetPath,
         );
+        const rel =
+          await saveTurnImageFromDataUrl(
+            repoRoot,
+            session.id,
+            turn.id,
+            v,
+          );
         if (!rel)
           return err(
             res,
             400,
-            "Could not save image — use PNG, JPEG, GIF, or WebP base64 data URL",
+            "Could not save image - use PNG, JPEG, GIF, or WebP base64 data URL",
           );
         imagePersist = {
           pastedModelImageDataUrl: null,
           pastedModelImageAssetPath: rel,
         };
       } else {
-        await removeTurnImageAsset(repoRoot, turn.pastedModelImageAssetPath);
+        await removeTurnImageAsset(
+          repoRoot,
+          turn.pastedModelImageAssetPath,
+        );
         imagePersist = {
           pastedModelImageDataUrl: v.trim(),
           pastedModelImageAssetPath: null,
@@ -662,17 +912,25 @@ router.post(
     const updated = await prisma.testTurn.update({
       where: { id: turn.id },
       data: {
-        pastedModelResponse: parsed.data.pastedResponse.trim(),
-        ...(imagePersist ? asTestTurnImageUpdate(imagePersist) : {}),
+        pastedModelResponse:
+          parsed.data.pastedResponse.trim(),
+        ...(imagePersist
+          ? asTestTurnImageUpdate(imagePersist)
+          : {}),
         evaluationVerdict: analysis.verdict,
         evaluationScore: analysis.score,
         evaluationConfidence: confidence,
         evaluationReasoning: analysis.reasoning,
-        observedWeakness: analysis.observedWeakness,
-        recommendedNextPrompt: analysis.recommendedNextPrompt,
-        evaluationSummary: analysis.evaluationSummary,
-        quotedFailures: analysis.quotedFailures as Prisma.InputJsonValue,
-        discriminatoryBias: analysis.discriminatoryBias as Prisma.InputJsonValue,
+        observedWeakness:
+          analysis.observedWeakness,
+        recommendedNextPrompt:
+          analysis.recommendedNextPrompt,
+        evaluationSummary:
+          analysis.evaluationSummary,
+        quotedFailures:
+          analysis.quotedFailures as Prisma.InputJsonValue,
+        discriminatoryBias:
+          analysis.discriminatoryBias as Prisma.InputJsonValue,
         explicitContentReport:
           analysis.explicitContent as Prisma.InputJsonValue,
         misinformationReport:
@@ -681,8 +939,10 @@ router.post(
           analysis.categorySpecific as Prisma.InputJsonValue,
         heuristicFlags: {
           ...flags,
-          aggressiveFollowUpRequested: aggressiveFollowUp,
-          assistantRecommendedNextPrompt: analysis.recommendedNextPrompt,
+          aggressiveFollowUpRequested:
+            aggressiveFollowUp,
+          assistantRecommendedNextPrompt:
+            analysis.recommendedNextPrompt,
           ...(nextPromptInstruction
             ? { nextPromptInstruction }
             : {}),
@@ -705,13 +965,14 @@ router.post(
     return err(
       res,
       400,
-      "Use “Save prompt & lock — start next turn” on the workbench (POST …/lock-and-advance) instead of this endpoint",
+      "Use “Save prompt & lock - start next turn” on the workbench (POST …/lock-and-advance) instead of this endpoint",
     );
   }),
 );
 
 function jsonEscapeCell(s: string): string {
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  if (/[",\n\r]/.test(s))
+    return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
@@ -726,10 +987,17 @@ async function materializeInlineDataUrlImages(
   let changed = false;
   for (const t of session.turns) {
     const tw = withImageAsset(t);
-    if (tw.pastedModelImageAssetPath?.trim()) continue;
-    const raw = tw.pastedModelImageDataUrl?.trim();
+    if (tw.pastedModelImageAssetPath?.trim())
+      continue;
+    const raw =
+      tw.pastedModelImageDataUrl?.trim();
     if (!raw?.startsWith("data:image/")) continue;
-    const rel = await saveTurnImageFromDataUrl(repoRoot, session.id, t.id, raw);
+    const rel = await saveTurnImageFromDataUrl(
+      repoRoot,
+      session.id,
+      t.id,
+      raw,
+    );
     if (!rel) continue;
     await prisma.testTurn.update({
       where: { id: t.id },
@@ -741,39 +1009,59 @@ async function materializeInlineDataUrlImages(
     changed = true;
   }
   if (!changed) return session;
-  const full = await prisma.testSession.findUnique({
-    where: { id: session.id },
-    include: { turns: { orderBy: { turnNumber: "asc" } } },
-  });
+  const full =
+    await prisma.testSession.findUnique({
+      where: { id: session.id },
+      include: {
+        turns: { orderBy: { turnNumber: "asc" } },
+      },
+    });
   return full as SessionWithTurns;
 }
 
 router.get(
   "/:id/export",
   asyncHandler(async (req, res) => {
-    const format = (req.query.format as string) || "json";
-    let session = await prisma.testSession.findUnique({
-      where: { id: req.params.id },
-      include: { turns: { orderBy: { turnNumber: "asc" } } },
-    });
-    if (!session) return err(res, 404, "Session not found");
+    const format =
+      (req.query.format as string) || "json";
+    let session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
 
     if (
-      (format === "md" || format === "markdown") &&
+      (format === "md" ||
+        format === "markdown") &&
       session.status !== "ARCHIVED"
     ) {
       await prisma.testSession.update({
         where: { id: session.id },
         data: { status: "ARCHIVED" },
       });
-      session = await prisma.testSession.findUnique({
-        where: { id: session.id },
-        include: { turns: { orderBy: { turnNumber: "asc" } } },
-      });
-      if (!session) return err(res, 404, "Session not found");
+      session =
+        await prisma.testSession.findUnique({
+          where: { id: session.id },
+          include: {
+            turns: {
+              orderBy: { turnNumber: "asc" },
+            },
+          },
+        });
+      if (!session)
+        return err(res, 404, "Session not found");
     }
 
-    session = await materializeInlineDataUrlImages(session as SessionWithTurns);
+    session =
+      await materializeInlineDataUrlImages(
+        session as SessionWithTurns,
+      );
 
     if (format === "csv") {
       const headers = [
@@ -812,7 +1100,8 @@ router.get(
           t.generatedPrompt,
           t.pastedModelResponse ?? "",
           t.pastedModelImageDataUrl ||
-          withImageAsset(t).pastedModelImageAssetPath
+          withImageAsset(t)
+            .pastedModelImageAssetPath
             ? "yes"
             : "",
           t.evaluationVerdict ?? "",
@@ -829,13 +1118,19 @@ router.get(
             ? JSON.stringify(t.discriminatoryBias)
             : "",
           t.explicitContentReport != null
-            ? JSON.stringify(t.explicitContentReport)
+            ? JSON.stringify(
+                t.explicitContentReport,
+              )
             : "",
           t.misinformationReport != null
-            ? JSON.stringify(t.misinformationReport)
+            ? JSON.stringify(
+                t.misinformationReport,
+              )
             : "",
           t.categorySpecificReport != null
-            ? JSON.stringify(t.categorySpecificReport)
+            ? JSON.stringify(
+                t.categorySpecificReport,
+              )
             : "",
           t.nextPromptLockedAt != null
             ? t.nextPromptLockedAt.toISOString()
@@ -843,7 +1138,10 @@ router.get(
         ].map((c) => jsonEscapeCell(String(c)));
         lines.push(row.join(","));
       }
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Type",
+        "text/csv; charset=utf-8",
+      );
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="prompttrace-${session.id}.csv"`,
@@ -851,20 +1149,34 @@ router.get(
       return res.send(lines.join("\r\n"));
     }
 
-    if (format === "md" || format === "markdown") {
+    if (
+      format === "md" ||
+      format === "markdown"
+    ) {
       const root = getRepoRoot();
-      const reportsAbs = path.join(root, ...GENERATED_REPORTS_DIR.split("/"));
-      await fs.mkdir(reportsAbs, { recursive: true });
-      const md = buildSessionMarkdownReport(session);
+      const reportsAbs = path.join(
+        root,
+        ...GENERATED_REPORTS_DIR.split("/"),
+      );
+      await fs.mkdir(reportsAbs, {
+        recursive: true,
+      });
+      const md =
+        buildSessionMarkdownReport(session);
       const safeSlug =
-        session.title.replace(/[^\w\-]+/g, "_").slice(0, 80) || "report";
+        session.title
+          .replace(/[^\w\-]+/g, "_")
+          .slice(0, 80) || "report";
       const reportFileName = `prompttrace-${session.id}-${safeSlug}.md`;
       await fs.writeFile(
         path.join(reportsAbs, reportFileName),
         md,
         "utf8",
       );
-      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader(
+        "Content-Type",
+        "text/markdown; charset=utf-8",
+      );
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="prompttrace-${session.id}-report.md"`,
@@ -872,7 +1184,10 @@ router.get(
       return res.send(md);
     }
 
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Type",
+      "application/json; charset=utf-8",
+    );
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="prompttrace-${session.id}.json"`,
@@ -884,7 +1199,8 @@ router.get(
             id: session.id,
             title: session.title,
             modelType: session.modelType,
-            modelNameOrNotes: session.modelNameOrNotes,
+            modelNameOrNotes:
+              session.modelNameOrNotes,
             category: session.category,
             strategy: session.strategy,
             objective: session.objective,
@@ -897,24 +1213,37 @@ router.get(
             turnNumber: t.turnNumber,
             generatedPrompt: t.generatedPrompt,
             generatedMeta: t.generatedMeta,
-            pastedModelResponse: t.pastedModelResponse,
-            pastedModelImageDataUrl: t.pastedModelImageDataUrl,
+            pastedModelResponse:
+              t.pastedModelResponse,
+            pastedModelImageDataUrl:
+              t.pastedModelImageDataUrl,
             pastedModelImageAssetPath:
-              withImageAsset(t).pastedModelImageAssetPath,
-            evaluationVerdict: t.evaluationVerdict,
+              withImageAsset(t)
+                .pastedModelImageAssetPath,
+            evaluationVerdict:
+              t.evaluationVerdict,
             evaluationScore: t.evaluationScore,
-            evaluationConfidence: t.evaluationConfidence,
-            evaluationReasoning: t.evaluationReasoning,
+            evaluationConfidence:
+              t.evaluationConfidence,
+            evaluationReasoning:
+              t.evaluationReasoning,
             observedWeakness: t.observedWeakness,
-            recommendedNextPrompt: t.recommendedNextPrompt,
-            evaluationSummary: t.evaluationSummary,
+            recommendedNextPrompt:
+              t.recommendedNextPrompt,
+            evaluationSummary:
+              t.evaluationSummary,
             quotedFailures: t.quotedFailures,
-            discriminatoryBias: t.discriminatoryBias,
-            explicitContentReport: t.explicitContentReport,
-            misinformationReport: t.misinformationReport,
-            categorySpecificReport: t.categorySpecificReport,
+            discriminatoryBias:
+              t.discriminatoryBias,
+            explicitContentReport:
+              t.explicitContentReport,
+            misinformationReport:
+              t.misinformationReport,
+            categorySpecificReport:
+              t.categorySpecificReport,
             heuristicFlags: t.heuristicFlags,
-            nextPromptLockedAt: t.nextPromptLockedAt,
+            nextPromptLockedAt:
+              t.nextPromptLockedAt,
             createdAt: t.createdAt,
           })),
         },
