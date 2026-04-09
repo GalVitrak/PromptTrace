@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: prompttrace
+      POSTGRES_PASSWORD: prompttrace
+      POSTGRES_DB: prompttrace
+    ports:
+      - "5432:5432"
+    volumes:
+      - prompttrace_pg:/var/lib/postgresql/data
+
+volumes:
+  prompttrace_pg:

@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+
+# Builds & caches
+dist/
+build/
+*.tsbuildinfo
+.cache/
+.turbo/
+.vite/
+
+# Environment & secrets (never commit real credentials)
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# Logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS & editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# -----------------------------------------------------------------------------
+# Safety: local prompt libraries, session dumps, and fine-tuning artifacts
+# Keep adversarial prompts, model outputs, training corpora, and weights out of git.
+# -----------------------------------------------------------------------------
+prompts/
+**/prompts/
+fine-tuning/
+fine_tuning/
+finetuning/
+training-data/
+training_data/
+datasets/private/
+exports/
+session-exports/
+# Session markdown reports and uploaded turn images (local only)
+assets/*
+!assets/.gitkeep
+openai-batch/
+openai_batch/
+wandb/
+mlruns/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# LLM adapter / system prompts — keep local; do not push to GitHub
+server/src/services/llm.ts
+
+# Common fine-tuning / eval corpora (adjust if you add checked-in fixtures)
+*.jsonl

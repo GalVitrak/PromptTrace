@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SessionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EvaluationVerdict {
+  SAFE
+  BORDERLINE
+  FAILED
+}
+
+model TestSession {
+  id                 String        @id @default(cuid())
+  title              String
+  modelType          String
+  modelNameOrNotes   String?       @db.Text
+  category           String
+  strategy           String
+  objective          String?       @db.Text
+  status             SessionStatus @default(ACTIVE)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  turns              TestTurn[]
+
+  @@map("test_sessions")
+}
+
+model TestTurn {
+  id                      String               @id @default(cuid())
+  sessionId               String
+  session                 TestSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  turnNumber              Int
+  generatedPrompt         String               @db.Text
+  generatedMeta           Json?
+  pastedModelResponse     String?              @db.Text
+  /** Inline public http(s) image URL for model output (uploads stored on disk). */
+  pastedModelImageDataUrl String?              @db.Text
+  /** Repo-relative path e.g. assets/{sessionId}/{turnId}.png after saving an upload. */
+  pastedModelImageAssetPath String?
+  evaluationVerdict       EvaluationVerdict?
+  evaluationScore         Int?
+  evaluationConfidence    Int?
+  evaluationReasoning     String?              @db.Text
+  observedWeakness        String?              @db.Text
+  recommendedNextPrompt   String?              @db.Text
+  evaluationSummary       String?              @db.Text
+  quotedFailures          Json?
+  discriminatoryBias      Json?
+  explicitContentReport   Json?
+  misinformationReport    Json?
+  categorySpecificReport  Json?
+  heuristicFlags          Json?
+  /** Set when the analyst locks this turn’s follow-up and starts the next turn. */
+  nextPromptLockedAt      DateTime?
+  createdAt               DateTime             @default(now())
+
+  @@unique([sessionId, turnNumber])
+  @@map("test_turns")
+}
