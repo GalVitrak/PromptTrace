@@ -176,20 +176,6 @@ async function copyToClipboard(text: string) {
   await navigator.clipboard.writeText(text);
 }
 
-/** Latest assistant suggestion from Analyze (for resetting manual edits). */
-function assistantRecommendedSnapshot(
-  flags: unknown,
-): string | null {
-  if (!flags || typeof flags !== "object")
-    return null;
-  const v = (
-    flags as {
-      assistantRecommendedNextPrompt?: unknown;
-    }
-  ).assistantRecommendedNextPrompt;
-  return typeof v === "string" ? v : null;
-}
-
 const MAX_IMAGE_FILE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME = new Set([
   "image/png",
@@ -294,6 +280,10 @@ export function SessionDetail() {
     useState("");
   const [resuggestLoading, setResuggestLoading] =
     useState(false);
+  const [
+    resuggestFirstLoading,
+    setResuggestFirstLoading,
+  ] = useState(false);
   const [
     lockAdvanceLoading,
     setLockAdvanceLoading,
@@ -751,6 +741,30 @@ export function SessionDetail() {
     }
   }
 
+  async function onResuggestFirst() {
+    if (!id || !currentTurn) return;
+    setResuggestFirstLoading(true);
+    try {
+      await apiJson<SessionDetailType>(
+        `/api/sessions/${id}/turns/${currentTurn.id}/resuggest-first`,
+        {
+          method: "POST",
+        },
+      );
+      await load();
+      showBanner("First prompt re-suggested.", "ok");
+    } catch (e) {
+      showBanner(
+        e instanceof Error
+          ? e.message
+          : "Could not re-suggest first prompt",
+        "err",
+      );
+    } finally {
+      setResuggestFirstLoading(false);
+    }
+  }
+
   async function onLockAndAdvance() {
     if (!id || !currentTurn) return;
     const draft = editedNextPrompt.trim();
@@ -839,6 +853,7 @@ export function SessionDetail() {
   const workbenchBusy =
     analyzeLoading ||
     resuggestLoading ||
+    resuggestFirstLoading ||
     lockAdvanceLoading;
   const workbenchDisabled =
     sessionConcluded || workbenchBusy;
@@ -1162,22 +1177,41 @@ export function SessionDetail() {
         <div className="panel">
           <div className="panel-head">
             <h3>Generated test prompt</h3>
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              onClick={() =>
-                copyToClipboard(
-                  currentTurn.generatedPrompt,
-                ).then(() =>
-                  showBanner(
-                    "Prompt copied.",
-                    "ok",
-                  ),
-                )
-              }
-            >
-              Copy
-            </button>
+            <div className="panel-head-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() =>
+                  void onResuggestFirst()
+                }
+                disabled={
+                  workbenchDisabled ||
+                  currentTurn.turnNumber !== 1 ||
+                  !!currentTurn.evaluationVerdict ||
+                  resuggestFirstLoading
+                }
+              >
+                {resuggestFirstLoading
+                  ? "Re-suggesting…"
+                  : "Re-suggest first prompt"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() =>
+                  copyToClipboard(
+                    currentTurn.generatedPrompt,
+                  ).then(() =>
+                    showBanner(
+                      "Prompt copied.",
+                      "ok",
+                    ),
+                  )
+                }
+              >
+                Copy
+              </button>
+            </div>
           </div>
           <pre className="prompt-block">
             {currentTurn.generatedPrompt}
@@ -1839,26 +1873,6 @@ export function SessionDetail() {
                     {resuggestLoading
                       ? "Re-suggesting…"
                       : "Re-suggest"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-small"
-                    disabled={workbenchDisabled}
-                    onClick={() => {
-                      const snap =
-                        assistantRecommendedSnapshot(
-                          currentTurn.heuristicFlags,
-                        );
-                      const restored =
-                        snap ??
-                        currentTurn.recommendedNextPrompt ??
-                        "";
-                      setEditedNextPrompt(
-                        restored,
-                      );
-                    }}
-                  >
-                    Reset to assistant
                   </button>
                 </div>
               </div>

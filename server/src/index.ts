@@ -2,6 +2,8 @@ import cors from "cors";
 import express from "express";
 import { prisma } from "./db.js";
 import { prismaErrorMessage } from "./errors.js";
+import ctfRouter from "./routes/ctf.js";
+import providersRouter from "./routes/providers.js";
 import sessionsRouter from "./routes/sessions.js";
 
 const app = express();
@@ -29,6 +31,8 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.use("/api/sessions", sessionsRouter);
+app.use("/api/providers", providersRouter);
+app.use("/api/ctf", ctfRouter);
 
 app.use(
   (

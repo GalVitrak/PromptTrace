@@ -1,5 +1,14 @@
 export type ApiError = { error: string; details?: unknown };
 
+export type ProviderType = "default";
+export type ProviderConfig = {
+  providerType: ProviderType;
+  baseUrl?: string;
+  model?: string;
+  systemPrompt?: string;
+  temperature?: number;
+};
+
 export async function apiJson<T>(
   path: string,
   init?: RequestInit,
@@ -124,4 +133,48 @@ export type SessionDetail = {
   createdAt: string;
   updatedAt: string;
   turns: TestTurn[];
+};
+
+export type CtfResultLabel =
+  | "SAFE"
+  | "BORDERLINE"
+  | "FAILED"
+  | "PARTIAL_BYPASS"
+  | "SUCCESSFUL_BYPASS"
+  | "INCONCLUSIVE";
+
+export type CtfTurn = {
+  turnNumber: number;
+  candidateAttackPrompt: string;
+  promptSent: string;
+  targetResponse: string;
+  judgeLabel?: CtfResultLabel;
+  analystLabel?: CtfResultLabel;
+  notes?: string;
+  createdAt: string;
+};
+
+export type CtfRun = {
+  id: string;
+  timestamp: string;
+  mode: "CTF";
+  attackerModel: string;
+  targetModel: string;
+  judgeModel?: string;
+  attackerProvider?: ProviderConfig;
+  targetProvider?: ProviderConfig;
+  judgeProvider?: ProviderConfig;
+  strategyCategory: string;
+  strategyName: string;
+  challengeObjective?: string;
+  flagFormatHint?: string;
+  difficulty: "EASY" | "MEDIUM" | "HARD" | "EXPERT";
+  guardrailProfile?: string;
+  systemPromptUsed?: string;
+  transcript: CtfTurn[];
+  finalResult?: CtfResultLabel;
+  notes?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
 };

@@ -6,6 +6,8 @@ import type { Prisma } from "@prisma/client";
 import {
   AnalyzeTurnBodySchema,
   BootstrapSessionBodySchema,
+  type ProviderConfig,
+  ProviderConfigSchema,
   LockAndAdvanceBodySchema,
   ResuggestNextBodySchema,
   UpdateSessionContextBodySchema,
@@ -23,10 +25,11 @@ import {
   runHeuristics,
 } from "../services/heuristics.js";
 import {
-  analyzePastedResponse,
-  generateAdversarialPrompt,
-  resuggestRecommendedNextPrompt,
-} from "../services/llm.js";
+  analyzePastedResponseRouted,
+  generateAdversarialPromptRouted,
+  resuggestRecommendedNextPromptRouted,
+} from "../services/providerRouter.js";
+import { resolveAttackVector } from "../services/attackVectors.js";
 import {
   contentTypeForAssetFilename,
   getRepoRoot,
@@ -81,6 +84,30 @@ function err(
   return res
     .status(status)
     .json({ error: message, details });
+}
+
+function providerFromMeta(
+  meta: unknown,
+): ProviderConfig | undefined {
+  if (!meta || typeof meta !== "object") {
+    return undefined;
+  }
+  const raw = (
+    meta as { provider?: unknown }
+  ).provider;
+  const parsed = ProviderConfigSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function aggressiveFromMeta(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object")
+    return false;
+  const v = (
+    meta as {
+      aggressiveFraming?: unknown;
+    }
+  ).aggressiveFraming;
+  return Boolean(v);
 }
 
 type TurnAgg = {
@@ -211,6 +238,11 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
+    const reqId = Math.random()
+      .toString(36)
+      .slice(2, 8);
+    const started = Date.now();
+    console.log(`[sessions:${reqId}] create start`);
     const parsed =
       BootstrapSessionBodySchema.safeParse(
         req.body,
@@ -224,26 +256,46 @@ router.post(
       );
 
     const b = parsed.data;
+    console.log(
+      `[sessions:${reqId}] payload strategy="${b.strategy}" category="${b.category}" provider="${b.provider?.providerType ?? "default"}"`,
+    );
     const title = formatSessionTitle(
       b.category,
       b.title,
     );
     const aggressive = b.aggressive === true;
+    const attackVector = resolveAttackVector(
+      b.strategy,
+    );
 
     let gen: Awaited<
-      ReturnType<typeof generateAdversarialPrompt>
+      ReturnType<
+        typeof generateAdversarialPromptRouted
+      >
     >;
     try {
-      gen = await generateAdversarialPrompt({
-        modelType: b.modelType,
-        modelNameOrNotes: b.modelNameOrNotes,
-        category: b.category,
-        strategy: b.strategy,
-        objective: b.objective,
-        aggressive,
-      });
+      console.log(
+        `[sessions:${reqId}] generating first prompt`,
+      );
+      gen = await generateAdversarialPromptRouted(
+        {
+          modelType: b.modelType,
+          modelNameOrNotes: b.modelNameOrNotes,
+          category: b.category,
+          strategy: b.strategy,
+          objective: b.objective,
+          aggressive,
+        },
+        b.provider,
+      );
+      console.log(
+        `[sessions:${reqId}] prompt generated chars=${gen.generatedPrompt.length}`,
+      );
     } catch (e) {
       console.error(e);
+      console.error(
+        `[sessions:${reqId}] generate failed elapsed_ms=${Date.now() - started}`,
+      );
       return err(
         res,
         502,
@@ -272,6 +324,12 @@ router.post(
                 pressurePoint: gen.pressurePoint,
                 notes: gen.notes ?? null,
                 aggressiveFraming: aggressive,
+                attackVector: attackVector.vector,
+                attackVectorLabel:
+                  attackVector.label,
+                ...(b.provider
+                  ? { provider: b.provider }
+                  : {}),
               },
             },
           },
@@ -283,6 +341,9 @@ router.post(
         },
       });
 
+    console.log(
+      `[sessions:${reqId}] create ok sessionId=${session.id} elapsed_ms=${Date.now() - started}`,
+    );
     return res.status(201).json(session);
   }),
 );
@@ -392,7 +453,16 @@ router.patch(
         },
       });
 
-    res.json(session);
+    const refreshed =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
+    res.json(refreshed);
   }),
 );
 
@@ -531,12 +601,23 @@ router.post(
       );
     const pasted =
       turn.pastedModelResponse?.trim();
-    if (!pasted)
+    const hasImageOutput =
+      (typeof turn.pastedModelImageDataUrl ===
+        "string" &&
+        turn.pastedModelImageDataUrl.length > 0) ||
+      (typeof turn.pastedModelImageAssetPath ===
+        "string" &&
+        turn.pastedModelImageAssetPath.trim()
+          .length > 0);
+    if (!pasted && !hasImageOutput)
       return err(
         res,
         400,
-        "No pasted response on this turn to re-suggest from",
+        "No pasted response or image output on this turn to re-suggest from",
       );
+    const pastedForResuggest =
+      pasted ||
+      "[No pasted text response. Re-suggest based on image-output context and prior evaluation summary.]";
 
     const aggressive =
       parsed.data.aggressive === true;
@@ -546,33 +627,29 @@ router.post(
 
     let out: Awaited<
       ReturnType<
-        typeof resuggestRecommendedNextPrompt
+        typeof resuggestRecommendedNextPromptRouted
       >
     >;
     try {
-      out = await resuggestRecommendedNextPrompt({
-        category: session.category,
-        strategy: session.strategy,
-        generatedPrompt: turn.generatedPrompt,
-        pastedResponse: pasted,
-        objective: session.objective,
-        aggressive,
-        nextPromptInstruction,
-        priorVerdict: turn.evaluationVerdict,
-        evaluationSummary:
-          turn.evaluationSummary ?? "",
-        priorRecommendedNextPrompt:
-          turn.recommendedNextPrompt,
-        hasImageOutput:
-          (typeof turn.pastedModelImageDataUrl ===
-            "string" &&
-            turn.pastedModelImageDataUrl.length >
-              0) ||
-          (typeof turn.pastedModelImageAssetPath ===
-            "string" &&
-            turn.pastedModelImageAssetPath.trim()
-              .length > 0),
-      });
+      out = await resuggestRecommendedNextPromptRouted(
+        {
+          category: session.category,
+          strategy: session.strategy,
+          generatedPrompt: turn.generatedPrompt,
+          pastedResponse: pastedForResuggest,
+          objective: session.objective,
+          aggressive,
+          nextPromptInstruction,
+          priorVerdict: turn.evaluationVerdict,
+          evaluationSummary:
+            turn.evaluationSummary ?? "",
+          priorRecommendedNextPrompt:
+            turn.recommendedNextPrompt,
+          hasImageOutput,
+        },
+        parsed.data.providerOverride ??
+          providerFromMeta(turn.generatedMeta),
+      );
     } catch (e) {
       console.error(e);
       return err(
@@ -629,6 +706,131 @@ router.post(
         },
       });
     res.json(full);
+  }),
+);
+
+router.post(
+  "/:id/turns/:turnId/resuggest-first",
+  asyncHandler(async (req, res) => {
+    const session =
+      await prisma.testSession.findUnique({
+        where: { id: req.params.id },
+      });
+    if (!session)
+      return err(res, 404, "Session not found");
+    if (session.status === "ARCHIVED")
+      return err(res, 400, SESSION_CONCLUDED_MSG);
+
+    const turnRaw =
+      await prisma.testTurn.findFirst({
+        where: {
+          id: req.params.turnId,
+          sessionId: session.id,
+        },
+      });
+    if (!turnRaw)
+      return err(res, 404, "Turn not found");
+    const turn = withImageAsset(turnRaw);
+    if (turn.turnNumber !== 1)
+      return err(
+        res,
+        400,
+        "Re-suggest first prompt is only available on turn 1",
+      );
+    if (turn.nextPromptLockedAt != null)
+      return err(
+        res,
+        400,
+        "This turn is locked - first prompt can no longer be replaced",
+      );
+    if (turn.evaluationVerdict != null)
+      return err(
+        res,
+        400,
+        "First prompt already analyzed. Start from a new session to regenerate the first prompt.",
+      );
+
+    const latest =
+      await prisma.testTurn.findFirst({
+        where: { sessionId: session.id },
+        orderBy: { turnNumber: "desc" },
+        select: { id: true, turnNumber: true },
+      });
+    if (!latest || latest.id !== turn.id)
+      return err(
+        res,
+        400,
+        "Only the latest turn can be re-suggested",
+      );
+
+    const aggressive = aggressiveFromMeta(
+      turn.generatedMeta,
+    );
+    const provider =
+      providerFromMeta(turn.generatedMeta);
+    const attackVector = resolveAttackVector(
+      session.strategy,
+    );
+
+    let gen: Awaited<
+      ReturnType<
+        typeof generateAdversarialPromptRouted
+      >
+    >;
+    try {
+      gen = await generateAdversarialPromptRouted(
+        {
+          modelType: session.modelType,
+          modelNameOrNotes:
+            session.modelNameOrNotes,
+          category: session.category,
+          strategy: session.strategy,
+          objective: session.objective,
+          aggressive,
+        },
+        provider,
+      );
+    } catch (e) {
+      console.error(e);
+      return err(
+        res,
+        502,
+        "Could not re-suggest first prompt",
+        e instanceof Error ? e.message : e,
+      );
+    }
+
+    await prisma.testTurn.update({
+      where: { id: turn.id },
+      data: {
+        generatedPrompt: gen.generatedPrompt,
+        generatedMeta: {
+          objective: gen.objective,
+          pressurePoint: gen.pressurePoint,
+          notes: gen.notes ?? null,
+          aggressiveFraming: aggressive,
+          attackVector: attackVector.vector,
+          attackVectorLabel: attackVector.label,
+          ...(provider ? { provider } : {}),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await prisma.testSession.update({
+      where: { id: session.id },
+      data: { updatedAt: new Date() },
+    });
+
+    const full =
+      await prisma.testSession.findUnique({
+        where: { id: session.id },
+        include: {
+          turns: {
+            orderBy: { turnNumber: "asc" },
+          },
+        },
+      });
+    return res.json(full);
   }),
 );
 
@@ -715,6 +917,19 @@ router.post(
     const editBaseline =
       assistantSnap ||
       (turn.recommendedNextPrompt ?? "").trim();
+    const inheritedProvider = providerFromMeta(
+      turn.generatedMeta,
+    );
+    const inheritedAttackVector =
+      turn.generatedMeta &&
+      typeof turn.generatedMeta === "object"
+        ? (
+            turn.generatedMeta as {
+              attackVector?: unknown;
+              attackVectorLabel?: unknown;
+            }
+          )
+        : {};
 
     await prisma.$transaction([
       prisma.testTurn.update({
@@ -739,6 +954,23 @@ router.post(
             seededFromTurnNumber: turn.turnNumber,
             lockedPreviousTurnAt:
               lockedAt.toISOString(),
+            ...(inheritedProvider
+              ? { provider: inheritedProvider }
+              : {}),
+            ...(typeof inheritedAttackVector.attackVector ===
+            "string"
+              ? {
+                  attackVector:
+                    inheritedAttackVector.attackVector,
+                }
+              : {}),
+            ...(typeof inheritedAttackVector.attackVectorLabel ===
+            "string"
+              ? {
+                  attackVectorLabel:
+                    inheritedAttackVector.attackVectorLabel,
+                }
+              : {}),
           },
         },
       }),
@@ -823,22 +1055,26 @@ router.post(
       parsed.data.nextPromptInstruction?.trim() ||
       null;
     let analysis: Awaited<
-      ReturnType<typeof analyzePastedResponse>
+      ReturnType<typeof analyzePastedResponseRouted>
     >;
     try {
-      analysis = await analyzePastedResponse({
-        category: session.category,
-        strategy: session.strategy,
-        generatedPrompt: turn.generatedPrompt,
-        pastedResponse:
-          parsed.data.pastedResponse.trim(),
-        objective: session.objective,
-        aggressive: aggressiveFollowUp,
-        nextPromptInstruction,
-        pastedImageDataUrl:
-          resolvedImageDataUrl ?? undefined,
-        modelType: session.modelType,
-      });
+      analysis = await analyzePastedResponseRouted(
+        {
+          category: session.category,
+          strategy: session.strategy,
+          generatedPrompt: turn.generatedPrompt,
+          pastedResponse:
+            parsed.data.pastedResponse.trim(),
+          objective: session.objective,
+          aggressive: aggressiveFollowUp,
+          nextPromptInstruction,
+          pastedImageDataUrl:
+            resolvedImageDataUrl ?? undefined,
+          modelType: session.modelType,
+        },
+        parsed.data.providerOverride ??
+          providerFromMeta(turn.generatedMeta),
+      );
     } catch (e) {
       console.error(e);
       return err(

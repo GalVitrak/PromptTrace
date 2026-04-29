@@ -42,6 +42,9 @@ export function NewSession() {
         strategy,
         objective: objective.trim() || undefined,
         aggressive: aggressive || undefined,
+        provider: {
+          providerType: "default" as const,
+        },
         generateFirstTurn: true as const,
       };
       const session = await apiJson<{

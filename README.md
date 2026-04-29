@@ -1,6 +1,6 @@
 # PromptTrace
 
-**Human-in-the-loop black-box adversarial testing workbench** for GenAI safety analysts. Design indirect test prompts, paste target-model responses from external systems, get structured assessments, iterate multi-turn red-team workflows, and export session data for review.
+**Human-in-the-loop black-box adversarial testing workbench** for GenAI safety analysts. Design indirect test prompts, paste target-model responses from external systems, get structured assessments, iterate multi-turn red-team workflows, and export session data for review. Includes a dedicated **CTF mode** for iterative attack loops against opaque targets.
 
 [![Stack](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -16,7 +16,8 @@ Modern LLMs need structured red teaming and robustness evaluation. Analysts ofte
 - **Adversarial test prompt generation** - OpenAI-compatible API with **demo/mock mode** when no API key is set.
 - **Response analysis** - Structured verdict (Safe / Borderline / Failed), score, confidence, reasoning, observed weakness, next recommended prompt; combined **LLM + lightweight heuristics**.
 - **Iterative turns** - “Create next turn” seeds the next prompt from the prior recommendation.
-- **Export** - JSON and CSV downloads; Markdown reports with session metadata and turn text (model-output images omitted from `.md` for safer handling).
+- **CTF mode** - Objective-driven attack loop for opaque/black-box targets: set a challenge objective, generate an attack prompt, paste the model's response, get a judge label and a suggested follow-up prompt, repeat. Runs are persisted as JSON and fully exportable.
+- **Export** - JSON, CSV, and Markdown downloads for both standard sessions and CTF runs.
 
 ## Architecture
 
@@ -80,6 +81,44 @@ flowchart TB
   C -->|Conclude Testing| X
 ```
 
+## CTF mode
+
+CTF mode is a focused attack-loop workflow for analysts who need to probe a **fully opaque target** (a product, API, or hosted model where they cannot inspect system prompts or configure anything). It complements standard sessions by removing the session-level taxonomy overhead and optimizing for rapid iterative prompting.
+
+### How it works
+
+1. **Start a CTF loop** - Give the run a name, pick an attack strategy, and describe the challenge objective (what you are trying to get the target to do or reveal).
+2. **Generate an attack prompt** - The LLM attacker generates a candidate prompt tailored to the objective and chosen strategy. You can regenerate as many times as you like and edit the prompt before sending.
+3. **Send to your target** - Copy the prompt, execute it in the opaque target system, and paste the response back into PromptTrace.
+4. **Analyze** - The analyzer judges the response (SAFE / BORDERLINE / PARTIAL\_BYPASS / SUCCESSFUL\_BYPASS / FAILED / INCONCLUSIVE) and suggests the next attack prompt.
+5. **Iterate** - The suggested next prompt is pre-loaded; adjust the strategy or CTF instructions and repeat from step 3.
+6. **Export** - Download the full run as JSON, CSV, or a structured Markdown report at any point.
+
+### CTF workflow diagram
+
+```mermaid
+flowchart TB
+  O[Set objective\n& attack strategy]
+  G[Generate attack prompt]
+  S[Send prompt to opaque target]
+  P[Paste target response]
+  J[Analyze: judge label\n+ suggested next prompt]
+  C{Bypass achieved?}
+  N[Load suggested\nnext prompt]
+  X[Export run:\nJSON / CSV / Markdown]
+
+  O --> G
+  G --> S
+  S --> P
+  P --> J
+  J --> C
+  C -->|No| N
+  N --> G
+  C -->|Yes or done| X
+```
+
+CTF runs are stored as JSON files under `docs/generated_ctf_runs/` and are never written to the PostgreSQL database.
+
 ## Prerequisites
 
 - Node.js 20+
@@ -136,6 +175,25 @@ On Windows (PowerShell): `Copy-Item server/src/services/llm.example.ts server/sr
 - **`OPENAI_API_KEY`** - Optional. If unset or empty, the API runs in **mock/demo mode** (deterministic canned outputs) so the UI remains demoable without external calls.
 - **`OPENAI_BASE_URL`** - Optional. Defaults to OpenAI’s API base URL for compatible providers.
 - **`LLM_MODEL`** - e.g. `gpt-4o-mini`.
+- **`HERETIC_BASE_URL`** - Optional server-side base URL for the Heretic local provider (default `http://localhost:8000`).
+
+If you want the browser Heretic button to target a custom endpoint, create `client/.env.local` with:
+
+```env
+VITE_HERETIC_API_URL=http://localhost:8000
+```
+
+### Heretic Local server quickstart
+
+PowerShell:
+
+1. Activate env: `.\heretic-env\Scripts\activate`
+2. Run server: `uvicorn server:app --host 0.0.0.0 --port 8000`
+3. Test endpoint:
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/generate" -Method POST -ContentType "application/json" -Body '{"prompt":"hello"}'
+```
 
 ### 4. Create the database (first time only)
 
@@ -185,15 +243,30 @@ Run the API with `node server/dist/index.js` (after setting `DATABASE_URL` and r
 
 ## API summary
 
-| Method | Path                                            | Description                                                |
-| ------ | ----------------------------------------------- | ---------------------------------------------------------- |
-| `GET`  | `/api/health`                                   | Health + `llmMode` (`live` / `mock`)                       |
-| `GET`  | `/api/sessions`                                 | List sessions                                              |
-| `POST` | `/api/sessions`                                 | Bootstrap session + first turn (`generateFirstTurn: true`) |
-| `GET`  | `/api/sessions/:id`                             | Session with turns                                         |
-| `POST` | `/api/sessions/:id/turns/:turnId/analyze`       | Analyze pasted response                                    |
-| `POST` | `/api/sessions/:id/turns/next`                  | Create next turn from prior recommendation                 |
-| `GET`  | `/api/sessions/:id/export?format=json\|csv\|md` | Download export (Markdown excludes image pixels/URLs)      |
+### Sessions
+
+| Method  | Path                                            | Description                                                |
+| ------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| `GET`   | `/api/health`                                   | Health + `llmMode` (`live` / `mock`)                       |
+| `GET`   | `/api/sessions`                                 | List sessions                                              |
+| `POST`  | `/api/sessions`                                 | Bootstrap session + first turn (`generateFirstTurn: true`) |
+| `GET`   | `/api/sessions/:id`                             | Session with turns                                         |
+| `POST`  | `/api/sessions/:id/turns/:turnId/analyze`       | Analyze pasted response                                    |
+| `POST`  | `/api/sessions/:id/turns/next`                  | Create next turn from prior recommendation                 |
+| `GET`   | `/api/sessions/:id/export?format=json\|csv\|md` | Download export (Markdown excludes image pixels/URLs)      |
+
+### CTF
+
+| Method  | Path                                          | Description                                                    |
+| ------- | --------------------------------------------- | -------------------------------------------------------------- |
+| `GET`   | `/api/ctf/runs`                               | List all CTF runs                                              |
+| `POST`  | `/api/ctf/runs`                               | Create a new CTF run                                           |
+| `GET`   | `/api/ctf/runs/:id`                           | Get a single CTF run (with full transcript)                    |
+| `POST`  | `/api/ctf/runs/:id/generate-attack`           | Generate a candidate attack prompt for the current turn        |
+| `POST`  | `/api/ctf/runs/:id/analyze-response`          | Submit a pasted response; returns judge label + next prompt    |
+| `POST`  | `/api/ctf/runs/:id/execute-turn`              | Execute a turn against a live provider target (non-black-box)  |
+| `PATCH` | `/api/ctf/runs/:id`                           | Update run metadata (final result, notes, tags)                |
+| `GET`   | `/api/ctf/runs/:id/export?format=json\|csv\|md` | Download full run export                                     |
 
 ## Repository hygiene (GitHub)
 
@@ -216,6 +289,7 @@ PromptTrace is intended for **authorized AI safety testing, red teaming, respons
 - Session list filters (category, verdict, date) and search
 - Richer analytics (verdict distributions, turn comparisons)
 - Analyst notes per turn, tags, and session archiving UX
+- CTF run list filters and a summary dashboard (bypass rate, turn count)
 - Optional auth and multi-user org models
 - Automated regression suites tied to exported JSON fixtures
 

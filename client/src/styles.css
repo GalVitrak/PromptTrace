@@ -150,6 +150,7 @@ a:hover {
   gap: 0.25rem;
   max-width: 640px;
 }
+.session-context-form input,
 .session-context-form select,
 .session-context-form textarea {
   font: inherit;
@@ -158,6 +159,9 @@ a:hover {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
+}
+.session-context-form input {
+  width: 100%;
 }
 .session-context-form .field span:first-child {
   font-size: 0.8rem;
@@ -819,4 +823,99 @@ a:hover {
   background: rgba(240, 113, 120, 0.15);
   border: 1px solid var(--failed);
   color: #ffc8cc;
+}
+
+.ctf-page h2 {
+  margin-top: 0;
+}
+.ctf-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(320px, 1fr) minmax(260px, 1fr);
+  margin-bottom: 1rem;
+}
+.ctf-page .panel-actions .field {
+  margin: 0;
+  min-width: 240px;
+  flex: 1 1 280px;
+}
+.ctf-page .panel-actions .field select,
+.ctf-page .panel-actions .field input {
+  width: 100%;
+}
+.ctf-page .response-input {
+  min-height: 160px;
+}
+.ctf-active-toolbar {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  gap: 0.8rem;
+  align-items: end;
+  margin: 0.75rem 0 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.ctf-active-toolbar .field {
+  margin: 0;
+}
+.ctf-active-toolbar .field > span:first-child {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #c5d0e0;
+}
+.ctf-active-toolbar select {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.ctf-active-toolbar .btn {
+  height: fit-content;
+  white-space: nowrap;
+  min-height: 2.25rem;
+}
+.ctf-instructions-field {
+  margin: 0 0 0.9rem;
+}
+.ctf-instructions-field > span:first-child {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #c5d0e0;
+}
+.ctf-instructions-field textarea {
+  width: 100%;
+  min-height: 86px;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+.ctf-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.active-run-btn {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, 0.16);
+}
+
+@media (max-width: 900px) {
+  .ctf-grid {
+    grid-template-columns: 1fr;
+  }
+  .ctf-active-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
 }

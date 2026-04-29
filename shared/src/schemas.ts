@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   isAttackStrategy,
   isCategory,
+  isCtfResultLabel,
+  isCtfStrategyCategory,
   isModelType,
 } from "./taxonomy.js";
 
@@ -10,6 +12,25 @@ export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
 export const EvaluationVerdictSchema = z.enum(["SAFE", "BORDERLINE", "FAILED"]);
 export type EvaluationVerdict = z.infer<typeof EvaluationVerdictSchema>;
+
+export const ProviderTypeSchema = z.enum(["default"]);
+export type ProviderType = z.infer<
+  typeof ProviderTypeSchema
+>;
+
+export const ProviderConfigSchema = z.object({
+  providerType: ProviderTypeSchema.default("default"),
+  baseUrl: z.string().url().optional(),
+  model: z.string().min(1).max(200).optional(),
+  systemPrompt: z
+    .string()
+    .max(20_000)
+    .optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+export type ProviderConfig = z.infer<
+  typeof ProviderConfigSchema
+>;
 
 export const PromptGenerationOutputSchema = z.object({
   objective: z.string(),
@@ -114,6 +135,7 @@ export const BootstrapSessionBodySchema = z.object({
   objective: z.string().max(10_000).optional(),
   /** Stronger indirect pressure on policy boundaries (still non-explicit; analyst-controlled). */
   aggressive: z.boolean().optional(),
+  provider: ProviderConfigSchema.optional(),
   generateFirstTurn: z.literal(true),
 });
 export type BootstrapSessionBody = z.infer<typeof BootstrapSessionBodySchema>;
@@ -181,6 +203,7 @@ export const AnalyzeTurnBodySchema = z
     aggressive: z.boolean().optional(),
     /** Analyst guidance for how to shape recommendedNextPrompt (e.g. angle, constraints). */
     nextPromptInstruction: z.string().max(4_000).optional(),
+    providerOverride: ProviderConfigSchema.optional(),
   })
   .superRefine((val, ctx) => {
     const text = val.pastedResponse.trim();
@@ -223,8 +246,161 @@ export type LockAndAdvanceBody = z.infer<typeof LockAndAdvanceBodySchema>;
 export const ResuggestNextBodySchema = z.object({
   aggressive: z.boolean().optional(),
   nextPromptInstruction: z.string().max(4_000).optional(),
+  providerOverride: ProviderConfigSchema.optional(),
 });
 export type ResuggestNextBody = z.infer<typeof ResuggestNextBodySchema>;
+
+export const CtfResultLabelSchema = z.enum([
+  "SAFE",
+  "BORDERLINE",
+  "FAILED",
+  "PARTIAL_BYPASS",
+  "SUCCESSFUL_BYPASS",
+  "INCONCLUSIVE",
+]);
+export type CtfResultLabel = z.infer<
+  typeof CtfResultLabelSchema
+>;
+
+export const CtfDifficultySchema = z.enum([
+  "EASY",
+  "MEDIUM",
+  "HARD",
+  "EXPERT",
+]);
+export type CtfDifficulty = z.infer<
+  typeof CtfDifficultySchema
+>;
+
+const CtfStrategyCategorySchema = z
+  .string()
+  .refine(
+    isCtfStrategyCategory,
+    "Invalid CTF strategy category",
+  );
+
+export const CtfTurnSchema = z.object({
+  turnNumber: z.number().int().min(1),
+  candidateAttackPrompt: z.string().max(500_000),
+  promptSent: z.string().max(500_000),
+  targetResponse: z.string().max(1_000_000),
+  judgeLabel: CtfResultLabelSchema.optional(),
+  analystLabel: CtfResultLabelSchema.optional(),
+  notes: z.string().max(20_000).optional(),
+  createdAt: z.string(),
+});
+export type CtfTurn = z.infer<typeof CtfTurnSchema>;
+
+export const CtfRunSchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  mode: z.literal("CTF"),
+  attackerModel: z.string().min(1).max(200),
+  targetModel: z.string().min(1).max(200),
+  judgeModel: z.string().max(200).optional(),
+  attackerProvider: ProviderConfigSchema.optional(),
+  targetProvider: ProviderConfigSchema.optional(),
+  judgeProvider: ProviderConfigSchema.optional(),
+  strategyCategory: CtfStrategyCategorySchema,
+  strategyName: z.string().min(1).max(200),
+  challengeObjective: z
+    .string()
+    .max(2_000)
+    .optional(),
+  flagFormatHint: z.string().max(500).optional(),
+  difficulty: CtfDifficultySchema.default("MEDIUM"),
+  guardrailProfile: z
+    .string()
+    .max(200)
+    .optional(),
+  systemPromptUsed: z
+    .string()
+    .max(20_000)
+    .optional(),
+  transcript: z.array(CtfTurnSchema),
+  finalResult: CtfResultLabelSchema.optional(),
+  notes: z.string().max(50_000).optional(),
+  tags: z.array(z.string().max(80)).max(50),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type CtfRun = z.infer<typeof CtfRunSchema>;
+
+export const CreateCtfRunBodySchema = z.object({
+  attackerModel: z.string().min(1).max(200),
+  targetModel: z.string().min(1).max(200),
+  judgeModel: z.string().max(200).optional(),
+  attackerProvider: ProviderConfigSchema.optional(),
+  targetProvider: ProviderConfigSchema.optional(),
+  judgeProvider: ProviderConfigSchema.optional(),
+  strategyCategory: CtfStrategyCategorySchema,
+  strategyName: z.string().min(1).max(200),
+  challengeObjective: z
+    .string()
+    .max(2_000)
+    .optional(),
+  flagFormatHint: z.string().max(500).optional(),
+  difficulty: CtfDifficultySchema.optional(),
+  guardrailProfile: z.string().max(200).optional(),
+  systemPromptUsed: z
+    .string()
+    .max(20_000)
+    .optional(),
+  notes: z.string().max(50_000).optional(),
+  tags: z.array(z.string().max(80)).max(50).optional(),
+});
+export type CreateCtfRunBody = z.infer<
+  typeof CreateCtfRunBodySchema
+>;
+
+export const GenerateCtfAttackBodySchema = z.object({
+  analystInstruction: z
+    .string()
+    .max(10_000)
+    .optional(),
+  vectorOverride: z.string().max(200).optional(),
+  providerOverride: ProviderConfigSchema.optional(),
+});
+export type GenerateCtfAttackBody = z.infer<
+  typeof GenerateCtfAttackBodySchema
+>;
+
+export const ExecuteCtfTurnBodySchema = z.object({
+  prompt: z.string().min(1).max(500_000),
+  autoJudge: z.boolean().optional(),
+  targetProviderOverride:
+    ProviderConfigSchema.optional(),
+  judgeProviderOverride:
+    ProviderConfigSchema.optional(),
+});
+export type ExecuteCtfTurnBody = z.infer<
+  typeof ExecuteCtfTurnBodySchema
+>;
+
+export const AnalyzeCtfResponseBodySchema = z.object({
+  prompt: z.string().min(1).max(500_000),
+  pastedResponse: z.string().min(1).max(1_000_000),
+  ctfInstruction: z.string().max(10_000).optional(),
+  vectorOverride: z.string().max(200).optional(),
+  autoJudge: z.boolean().optional(),
+  judgeProviderOverride:
+    ProviderConfigSchema.optional(),
+});
+export type AnalyzeCtfResponseBody = z.infer<
+  typeof AnalyzeCtfResponseBodySchema
+>;
+
+export const UpdateCtfRunBodySchema = z.object({
+  finalResult: z
+    .string()
+    .refine(isCtfResultLabel, "Invalid result label")
+    .optional(),
+  notes: z.string().max(50_000).optional(),
+  tags: z.array(z.string().max(80)).max(50).optional(),
+});
+export type UpdateCtfRunBody = z.infer<
+  typeof UpdateCtfRunBodySchema
+>;
 
 /** LLM JSON when regenerating only the follow-up prompt. */
 export const RecommendedNextOnlySchema = z.object({

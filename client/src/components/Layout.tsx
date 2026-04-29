@@ -17,7 +17,13 @@ export function Layout({ children }: { children: ReactNode }) {
               className={({ isActive }) => (isActive ? "active" : "")}
               end
             >
-              Sessions
+              Red Team mode
+            </NavLink>
+            <NavLink
+              to="/ctf"
+              className={({ isActive }) => (isActive ? "active" : "")}
+            >
+              CTF mode
             </NavLink>
             <NavLink
               to="/sessions/new"
